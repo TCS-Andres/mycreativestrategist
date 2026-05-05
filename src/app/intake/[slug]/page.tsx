@@ -83,7 +83,7 @@ export default async function IntakePage({ params, searchParams }: PageProps) {
         </section>
       )}
 
-      <IntakeForm intake={intake} initial={initial} />
+      <IntakeForm kind={intake.kind} initial={initial} />
     </main>
   );
 }

@@ -9,7 +9,8 @@ import { Field } from '@/components/ui/Field';
 import { ProgressBar } from './ProgressBar';
 import { QuestionField } from './QuestionField';
 import type { UploadedFile } from './FileDropzone';
-import type { IntakeDefinition, IntakeKind, Section } from '@/lib/intakes/types';
+import type { IntakeKind, Section } from '@/lib/intakes/types';
+import { getIntake } from '@/lib/intakes';
 
 const STORAGE_KEY_PREFIX = 'tcs_intake_state_v2_';
 
@@ -84,13 +85,21 @@ function buildAllDefaults(sections: Section[], responses: Record<string, unknown
 }
 
 export function IntakeForm({
-  intake,
+  kind,
   initial,
 }: {
-  intake: IntakeDefinition;
+  kind: IntakeKind;
   initial?: Partial<PersistedState>;
 }) {
   const router = useRouter();
+  // Look up the full definition (which includes Zod schemas) on the client.
+  // Server -> client props can't carry class instances, so the page hands us
+  // only the kind and we resolve the rest here.
+  const maybeIntake = getIntake(kind);
+  if (!maybeIntake) {
+    throw new Error(`Unknown intake kind: ${kind}`);
+  }
+  const intake = maybeIntake;
   const sections = intake.sections;
   const fileQuestions = sections.flatMap((s) => s.questions).filter((q) => q.kind === 'upload');
 
