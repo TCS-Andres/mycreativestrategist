@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-brand-cream text-brand-navy font-sans;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: #fcdf09;
+    color: #1c192a;
+  }
+
+  textarea {
+    field-sizing: content;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    @apply font-heading text-eyebrow uppercase tracking-[0.18em] text-brand-orange;
+  }
+
+  .surface {
+    @apply rounded-lg border border-border bg-white shadow-soft;
+  }
+
+  .input-base {
+    @apply w-full rounded-md border border-border bg-white px-4 py-3 text-base text-brand-navy
+      placeholder:text-muted-foreground/70 transition
+      focus:border-brand-orange focus:outline-none focus:ring-4 focus:ring-brand-orange/20
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .label-base {
+    @apply block font-heading text-sm font-medium text-brand-navy;
+  }
+}
+
+@layer utilities {
+  .stack-y > * + * {
+    margin-top: var(--stack, 1rem);
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}
