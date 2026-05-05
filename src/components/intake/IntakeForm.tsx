@@ -131,6 +131,14 @@ export function IntakeForm({
   const [saveStatus, setSaveStatus] = React.useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [saveErrorMsg, setSaveErrorMsg] = React.useState<string | null>(null);
   const [direction, setDirection] = React.useState<1 | -1>(1);
+  const formAnchorRef = React.useRef<HTMLDivElement | null>(null);
+
+  function scrollToForm() {
+    if (typeof window === 'undefined') return;
+    const el = formAnchorRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   const currentSection = sections[sectionIndex];
   const isLast = sectionIndex === sections.length - 1;
@@ -227,13 +235,13 @@ export function IntakeForm({
     form.clearErrors(currentSection.questions.map((q) => q.id));
     setDirection(1);
     setSectionIndex((i) => Math.min(i + 1, sections.length - 1));
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToForm();
   }
 
   function goPrev() {
     setDirection(-1);
     setSectionIndex((i) => Math.max(i - 1, 0));
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToForm();
   }
 
   async function handleSubmit() {
@@ -302,7 +310,10 @@ export function IntakeForm({
     <>
       <ProgressBar sections={sections} currentIndex={sectionIndex} />
 
-      <div className="container max-w-3xl py-10 sm:py-16">
+      <div
+        ref={formAnchorRef}
+        className="container max-w-3xl py-10 sm:py-16 scroll-mt-24"
+      >
         <AnimatePresence mode="wait" initial={false} custom={direction}>
           <motion.section
             key={currentSection.id}
