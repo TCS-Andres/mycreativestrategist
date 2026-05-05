@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createSignedUrl, getSubmission } from '@/lib/db';
-import { SECTIONS, getOptionLabel } from '@/lib/questions';
-import { FILE_CATEGORY_LABELS, type SubmissionStatus } from '@/lib/types';
+import { getIntake, getOptionLabel, intakeFileCategoryLabel } from '@/lib/intakes';
+import type { SubmissionStatus } from '@/lib/types';
 import { StatusBadge } from '@/components/ui/Badge';
 import { formatBytes, formatDateTime } from '@/lib/utils';
 import { StatusControls } from './StatusControls';
@@ -21,6 +21,9 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
   const submission = await getSubmission(params.id);
   if (!submission) notFound();
 
+  const intake = getIntake(submission.kind);
+  if (!intake) notFound();
+
   const responses = submission.responses;
 
   const filesWithLinks = await Promise.all(
@@ -29,6 +32,14 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
       signed_url: await createSignedUrl(f.file_path, 60 * 60 * 24).catch(() => null),
     })),
   );
+
+  const businessName = (responses.business_name as string) ?? '(no business name)';
+  const contactName = (responses.contact_name as string) ?? '';
+  const contactEmail = (responses.contact_email as string) ?? '';
+  const contactPhone = (responses.contact_phone as string | undefined) ?? '';
+  const industry = (responses.industry as string | undefined) ?? '';
+
+  const nonUploadSections = intake.sections.filter((s) => s.id !== 'uploads');
 
   return (
     <div className="container max-w-5xl py-10">
@@ -41,13 +52,13 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
       <div className="mt-4 flex flex-col gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="eyebrow mb-2">{responses.industry}</p>
-          <h1 className="font-heading text-3xl font-semibold leading-tight">
-            {responses.business_name}
-          </h1>
+          <p className="eyebrow mb-2">
+            {industry ? `${industry} · ` : ''}{intake.label}
+          </p>
+          <h1 className="font-heading text-3xl font-semibold leading-tight">{businessName}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {responses.contact_name} · {responses.contact_email}
-            {responses.contact_phone ? ` · ${responses.contact_phone}` : ''}
+            {contactName} · {contactEmail}
+            {contactPhone ? ` · ${contactPhone}` : ''}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Submitted {formatDateTime(submission.submitted_at)}
@@ -63,18 +74,14 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
             >
               Download PDF
             </a>
-            <StatusControls
-              id={submission.id}
-              status={submission.status}
-              options={STATUSES}
-            />
+            <StatusControls id={submission.id} status={submission.status} options={STATUSES} />
           </div>
         </div>
       </div>
 
       <div className="mt-8 grid gap-10 lg:grid-cols-[1fr_320px]">
         <div className="space-y-12">
-          {SECTIONS.filter((s) => s.id !== 'uploads').map((section) => (
+          {nonUploadSections.map((section) => (
             <section key={section.id} className="space-y-6">
               <div>
                 <p className="eyebrow">Section {section.index}</p>
@@ -82,14 +89,15 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
               </div>
               <div className="surface divide-y divide-border">
                 {section.questions.map((q) => {
-                  const value = (responses as Record<string, unknown>)[q.id];
+                  const value = responses[q.id];
                   return (
                     <div key={q.id} className="grid gap-2 px-6 py-5 sm:grid-cols-[1fr_2fr]">
                       <p className="font-heading text-xs font-semibold uppercase tracking-[0.14em] text-brand-orange">
-                        {String(q.number).padStart(2, '0')} · {q.label}
+                        {q.number !== undefined ? `${String(q.number).padStart(2, '0')} · ` : ''}
+                        {q.label}
                       </p>
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-brand-navy">
-                        {formatValue(q.id, value)}
+                        {formatValue(submission.kind, q.id, value)}
                       </p>
                     </div>
                   );
@@ -100,8 +108,8 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
 
           <section className="space-y-6">
             <div>
-              <p className="eyebrow">Section 12</p>
-              <h2 className="font-heading text-2xl font-semibold">Uploads</h2>
+              <p className="eyebrow">Uploads</p>
+              <h2 className="font-heading text-2xl font-semibold">Uploaded files</h2>
             </div>
             <div className="surface divide-y divide-border">
               {(['logo', 'brand_guide', 'photography', 'marketing_materials'] as const).map((cat) => {
@@ -109,7 +117,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
                 return (
                   <div key={cat} className="px-6 py-5">
                     <p className="font-heading text-xs font-semibold uppercase tracking-[0.14em] text-brand-orange">
-                      {FILE_CATEGORY_LABELS[cat]}
+                      {intakeFileCategoryLabel(intake, cat)}
                     </p>
                     {list.length === 0 ? (
                       <p className="mt-2 text-sm text-muted-foreground">— None uploaded</p>
@@ -148,18 +156,21 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
         <aside className="space-y-6 lg:sticky lg:top-6 lg:h-fit">
           <div className="surface p-5">
             <p className="eyebrow mb-3">Quick view</p>
-            <Quick label="Industry" value={responses.industry} />
-            <Quick label="Team size" value={getOptionLabel('team_size', responses.team_size)} />
-            <Quick label="Budget" value={getOptionLabel('budget', responses.budget)} />
-            <Quick label="Timeline" value={responses.timeline} />
-            <Quick
-              label="Sales cycle"
-              value={getOptionLabel('sales_cycle', responses.sales_cycle)}
-            />
-            <Quick
-              label="Preferred channel"
-              value={getOptionLabel('comm_channel', responses.comm_channel)}
-            />
+            <Quick label="Intake" value={intake.label} />
+            {industry ? <Quick label="Industry" value={industry} /> : null}
+            {responses.team_size ? (
+              <Quick label="Team size" value={getOptionLabel(submission.kind, 'team_size', String(responses.team_size))} />
+            ) : null}
+            {responses.budget ? (
+              <Quick label="Budget" value={getOptionLabel(submission.kind, 'budget', String(responses.budget))} />
+            ) : null}
+            {responses.timeline ? <Quick label="Timeline" value={String(responses.timeline)} /> : null}
+            {responses.logo_type ? (
+              <Quick label="Logo type" value={getOptionLabel(submission.kind, 'logo_type', String(responses.logo_type))} />
+            ) : null}
+            {responses.starting_point ? (
+              <Quick label="Starting point" value={getOptionLabel(submission.kind, 'starting_point', String(responses.starting_point))} />
+            ) : null}
           </div>
 
           <div className="surface p-5">
@@ -181,12 +192,12 @@ function Quick({ label, value }: { label: string; value: string | number | null 
   );
 }
 
-function formatValue(qid: string, value: unknown): string {
+function formatValue(kind: string, qid: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (Array.isArray(value)) {
-    return value.map((v) => getOptionLabel(qid, String(v))).join(', ');
+    return value.map((v) => getOptionLabel(kind as never, qid, String(v))).join(', ');
   }
   if (typeof value === 'number') return String(value);
-  return getOptionLabel(qid, String(value));
+  return getOptionLabel(kind as never, qid, String(value));
 }

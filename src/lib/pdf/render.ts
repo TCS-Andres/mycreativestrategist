@@ -1,11 +1,12 @@
 import 'server-only';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { SubmissionPdf } from './SubmissionPdf';
-import type { Responses } from '@/lib/schema';
+import type { IntakeKind } from '@/lib/intakes/types';
 import type { SubmissionFile } from '@/lib/types';
 
 export async function renderSubmissionPdf(args: {
-  responses: Responses;
+  kind: IntakeKind;
+  responses: Record<string, unknown>;
   submittedAt: string;
   files?: Pick<SubmissionFile, 'category' | 'file_name'>[];
 }) {

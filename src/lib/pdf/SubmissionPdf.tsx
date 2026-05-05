@@ -1,8 +1,7 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
-import { SECTIONS, getOptionLabel } from '@/lib/questions';
-import type { Responses } from '@/lib/schema';
+import { getIntake, getOptionLabel, intakeFileCategoryLabel } from '@/lib/intakes';
+import type { IntakeKind } from '@/lib/intakes/types';
 import type { SubmissionFile } from '@/lib/types';
-import { FILE_CATEGORY_LABELS } from '@/lib/types';
 
 const colors = {
   navy: '#1C192A',
@@ -70,11 +69,6 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     color: colors.navy,
   },
-  divider: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    marginVertical: 12,
-  },
   pageHeader: {
     fontSize: 9,
     color: colors.gray,
@@ -97,41 +91,50 @@ const styles = StyleSheet.create({
   },
 });
 
-function formatAnswer(qid: string, value: unknown): string {
+function formatAnswer(kind: IntakeKind, qid: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (Array.isArray(value)) {
-    return value.map((v) => getOptionLabel(qid, String(v))).join(', ');
+    return value.map((v) => getOptionLabel(kind, qid, String(v))).join(', ');
   }
   if (typeof value === 'number') {
     return String(value);
   }
-  return getOptionLabel(qid, String(value));
+  return getOptionLabel(kind, qid, String(value));
 }
 
 export function SubmissionPdf({
+  kind,
   responses,
   submittedAt,
   files,
 }: {
-  responses: Responses;
+  kind: IntakeKind;
+  responses: Record<string, unknown>;
   submittedAt: string;
   files?: Pick<SubmissionFile, 'category' | 'file_name'>[];
 }) {
+  const intake = getIntake(kind)!;
+  const businessName = (responses.business_name as string) ?? '';
+  const contactName = (responses.contact_name as string) ?? '';
+  const contactEmail = (responses.contact_email as string) ?? '';
+  const contactPhone = (responses.contact_phone as string) ?? '';
+  const industry = (responses.industry as string) ?? '';
+
+  const nonUploadSections = intake.sections.filter((s) => s.id !== 'uploads');
+
   return (
     <Document
-      title={`Branding Intake — ${responses.business_name}`}
+      title={`${intake.label} — ${businessName}`}
       author="The Creative Strategist"
     >
       <Page size="LETTER" style={styles.cover}>
-        <Text style={styles.eyebrow}>The Creative Strategist · Branding Intake</Text>
-        <Text style={styles.coverTitle}>{responses.business_name}</Text>
-        <Text style={styles.coverMeta}>Primary contact: {responses.contact_name}</Text>
-        <Text style={styles.coverMeta}>Email: {responses.contact_email}</Text>
-        {responses.contact_phone ? (
-          <Text style={styles.coverMeta}>Phone: {responses.contact_phone}</Text>
-        ) : null}
-        <Text style={styles.coverMeta}>Industry: {responses.industry}</Text>
+        <Text style={styles.eyebrow}>The Creative Strategist · {intake.label}</Text>
+        <Text style={styles.coverTitle}>{businessName}</Text>
+        <Text style={styles.coverMeta}>Primary contact: {contactName}</Text>
+        <Text style={styles.coverMeta}>Email: {contactEmail}</Text>
+        {contactPhone ? <Text style={styles.coverMeta}>Phone: {contactPhone}</Text> : null}
+        {industry ? <Text style={styles.coverMeta}>Industry: {industry}</Text> : null}
         <Text style={styles.coverMeta}>
           Submitted{' '}
           {new Date(submittedAt).toLocaleDateString('en-US', {
@@ -142,7 +145,7 @@ export function SubmissionPdf({
         </Text>
       </Page>
 
-      {SECTIONS.filter((s) => s.id !== 'uploads').map((section) => (
+      {nonUploadSections.map((section) => (
         <Page size="LETTER" style={styles.page} key={section.id} wrap>
           <Text style={styles.pageHeader}>
             Section {section.index} · {section.title}
@@ -150,13 +153,14 @@ export function SubmissionPdf({
           <Text style={styles.sectionTitle}>{section.title}</Text>
           <Text style={styles.sectionIntro}>{section.intro}</Text>
           {section.questions.map((q) => {
-            const value = (responses as Record<string, unknown>)[q.id];
+            const value = responses[q.id];
             return (
               <View key={q.id} wrap={false}>
                 <Text style={styles.questionLabel}>
-                  {String(q.number).padStart(2, '0')} · {q.label}
+                  {q.number !== undefined ? `${String(q.number).padStart(2, '0')} · ` : ''}
+                  {q.label}
                 </Text>
-                <Text style={styles.questionText}>{formatAnswer(q.id, value)}</Text>
+                <Text style={styles.questionText}>{formatAnswer(kind, q.id, value)}</Text>
               </View>
             );
           })}
@@ -165,7 +169,7 @@ export function SubmissionPdf({
 
       {files && files.length > 0 && (
         <Page size="LETTER" style={styles.page}>
-          <Text style={styles.pageHeader}>Section 12 · Uploads</Text>
+          <Text style={styles.pageHeader}>Uploads</Text>
           <Text style={styles.sectionTitle}>Uploaded files</Text>
           <Text style={styles.sectionIntro}>
             Files are stored in Supabase Storage and accessible from the admin dashboard.
@@ -175,7 +179,7 @@ export function SubmissionPdf({
             if (list.length === 0) return null;
             return (
               <View key={cat}>
-                <Text style={styles.fileLabel}>{FILE_CATEGORY_LABELS[cat]}</Text>
+                <Text style={styles.fileLabel}>{intakeFileCategoryLabel(intake, cat)}</Text>
                 {list.map((f, i) => (
                   <Text key={`${f.file_name}-${i}`} style={styles.fileRow}>
                     · {f.file_name}

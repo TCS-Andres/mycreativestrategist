@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/intake/Logo';
-import { SECTIONS } from '@/lib/questions';
+import { INTAKE_ORDER, INTAKES } from '@/lib/intakes';
 
 export default function HomePage() {
   return (
@@ -11,7 +11,7 @@ export default function HomePage() {
           <Logo />
           <div>
             <p className="font-heading text-sm font-semibold leading-tight">The Creative Strategist</p>
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Branding Intake</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Client Intakes</p>
           </div>
         </div>
         <Link
@@ -23,46 +23,39 @@ export default function HomePage() {
       </header>
 
       <section className="container max-w-3xl py-16 sm:py-24">
-        <p className="eyebrow mb-6">Branding intake · Step one</p>
+        <p className="eyebrow mb-6">Welcome</p>
         <h1 className="font-heading text-4xl font-semibold leading-[1.1] tracking-tight text-brand-navy sm:text-6xl">
-          Let’s build the brand your business actually deserves.
+          The work begins with knowing you well.
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-relaxed text-brand-navy/80">
-          This questionnaire is the foundation of our work together. The clearer you are with me here,
-          the sharper the strategy I can build with you. It takes most clients between thirty and
-          sixty minutes, and you can save and come back to it whenever you need to.
-        </p>
-        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-brand-navy/80">
-          Twelve sections, plus a few uploads at the end. Take your time, be honest, and don’t worry
-          about polishing the answers. I’ll do that part with you.
+          These intakes are how I get up to speed before we start. Pick the one that matches the
+          engagement we agreed on, or follow the link I sent you.
         </p>
 
-        <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Link href="/intake">
-            <Button size="lg">Begin the questionnaire</Button>
-          </Link>
-          <p className="text-sm text-muted-foreground">
-            Already started? Use the link I emailed you to pick up where you left off.
-          </p>
-        </div>
-
-        <div className="mt-16 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {SECTIONS.map((section) => (
-            <div
-              key={section.id}
-              className="surface p-5"
-            >
-              <p className="font-heading text-xs font-semibold uppercase tracking-[0.16em] text-brand-orange">
-                Section {section.index}
-              </p>
-              <p className="mt-2 font-heading text-base font-semibold text-brand-navy">
-                {section.title}
-              </p>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {section.intro}
-              </p>
-            </div>
-          ))}
+        <div className="mt-12 space-y-4">
+          {INTAKE_ORDER.map((kind) => {
+            const intake = INTAKES[kind];
+            return (
+              <Link
+                key={kind}
+                href={`/intake/${intake.slug}`}
+                className="surface group flex flex-col gap-3 p-6 transition hover:border-brand-orange sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="space-y-2">
+                  <p className="font-heading text-xs font-semibold uppercase tracking-[0.16em] text-brand-orange">
+                    {intake.estimatedMinutes} · {intake.sections.length} sections
+                  </p>
+                  <h2 className="font-heading text-xl font-semibold text-brand-navy">{intake.label}</h2>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {intake.description}
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" className="self-start sm:self-auto">
+                  Begin →
+                </Button>
+              </Link>
+            );
+          })}
         </div>
       </section>
 

@@ -3,6 +3,7 @@ import * as React from 'react';
 import { useDropzone, type FileRejection } from 'react-dropzone';
 import { cn, formatBytes } from '@/lib/utils';
 import type { FileCategory } from '@/lib/types';
+import type { IntakeKind } from '@/lib/intakes/types';
 
 export interface UploadedFile {
   category: FileCategory;
@@ -14,6 +15,7 @@ export interface UploadedFile {
 
 export interface FileDropzoneProps {
   category: FileCategory;
+  intakeKind: IntakeKind;
   accept: string[];
   maxFiles: number;
   maxSizeMb: number;
@@ -25,6 +27,7 @@ export interface FileDropzoneProps {
 
 export function FileDropzone({
   category,
+  intakeKind,
   accept,
   maxFiles,
   maxSizeMb,
@@ -61,6 +64,7 @@ export function FileDropzone({
           formData.set('file', file);
           formData.set('category', category);
           formData.set('draftId', submissionDraftId);
+          formData.set('kind', intakeKind);
           const res = await fetch('/api/upload', { method: 'POST', body: formData });
           if (!res.ok) {
             const j = await res.json().catch(() => ({}));
@@ -77,7 +81,7 @@ export function FileDropzone({
         setUploading(false);
       }
     },
-    [files, maxFiles, category, submissionDraftId, onChange],
+    [files, maxFiles, category, intakeKind, submissionDraftId, onChange],
   );
 
   const removeFile = async (file: UploadedFile) => {

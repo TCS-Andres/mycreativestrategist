@@ -1,4 +1,4 @@
-import type { Responses } from './schema';
+import type { IntakeKind } from './intakes/types';
 
 export type SubmissionStatus = 'new' | 'in_review' | 'active' | 'archived';
 
@@ -17,12 +17,13 @@ export interface SubmissionFile {
 
 export interface Submission {
   id: string;
+  kind: IntakeKind;
   business_name: string;
   contact_name: string;
   contact_email: string;
   contact_phone: string | null;
   status: SubmissionStatus;
-  responses: Responses;
+  responses: Record<string, unknown>;
   internal_notes: string | null;
   submitted_at: string;
   reviewed_at: string | null;

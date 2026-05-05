@@ -1,20 +1,29 @@
-# The Creative Strategist · Branding Intake
+# The Creative Strategist · Client Intake Portal
 
 A premium, on-brand client intake portal for [The Creative Strategist](https://mycreativestrategist.com). Built with Next.js 14 App Router, Supabase (Postgres + Storage + Auth), Resend, and `@react-pdf/renderer`.
 
 The app has two sides:
 
-1. **Public-facing intake form** – a 12-section wizard with autosave, save-and-resume by email, and file uploads.
-2. **Admin dashboard** – password-protected, single-admin view for triaging submissions, downloading branded PDFs, and tracking status.
+1. **Public-facing intake forms** – multiple intake types served from `/intake/<kind>`, each a multi-step wizard with autosave, save-and-resume by email, and file uploads.
+2. **Admin dashboard** – password-protected, single-admin view for triaging submissions across every intake, downloading branded PDFs, and tracking status.
+
+## Available intakes
+
+| Kind | URL | Use it for | Length |
+| --- | --- | --- | --- |
+| `branding` | `/intake/branding` | Visual identity work — logo, color, type, references | ~15–25 min, 9 sections |
+| `full` | `/intake/full` | Full brand-strategy engagements | ~30–60 min, 12 sections |
+
+Each intake is an independent question catalog and Zod schema in `src/lib/intakes/`. Adding a new intake (e.g. messaging, website) is a matter of dropping a new file there and registering it in `src/lib/intakes/index.ts`. Everything else (uploads, PDFs, emails, admin dashboard) is generic over the intake.
 
 ## What you get out of the box
 
 - Multi-step form wizard with progress bar, animated transitions, and inline Zod validation
-- Drag-and-drop file uploads (logo, brand guide, photography, marketing materials)
-- Local autosave + server-side draft store with email resume links
+- Drag-and-drop file uploads
+- Local autosave + server-side draft store with email resume links (resume links route back to the correct intake)
 - Generated PDF of every submission, attached to the admin notification email
 - Resend emails: admin notification (with PDF + signed file links), client confirmation, resume link
-- Admin dashboard: list with status filters and search, detail view, status change, internal notes, settings
+- Admin dashboard: list with status + intake filters, search, detail view, status change, internal notes, settings
 - Supabase RLS policies so the public can submit but only the admin can read
 
 ---
@@ -48,17 +57,25 @@ cp .env.example .env.local
 
 Create a project at [supabase.com](https://supabase.com) (or provision via the Vercel Marketplace).
 
-Then in the **SQL Editor**, run the migration:
+Then in the **SQL Editor**, run the migrations in order:
 
 ```bash
 supabase/migrations/20260504000000_init.sql
+supabase/migrations/20260505000000_intake_kind.sql
 ```
 
 This creates:
 - `submissions`, `submission_files`, `submission_drafts`, `app_settings` tables
-- `submission_status` and `file_category` enums
+- `submission_status`, `file_category`, and `intake_kind` enums
 - A private storage bucket named `submissions`
 - Row-level-security policies (public can insert, only the admin email can read)
+- A `kind` column on `submissions` and `submission_drafts` so multiple intakes share the same backend
+
+When you add new intakes later, add a corresponding value to the `intake_kind` enum:
+
+```sql
+alter type intake_kind add value if not exists 'messaging';
+```
 
 > **About the admin email check.** The RLS policies compare `auth.jwt() ->> 'email'` against a Postgres setting `app.admin_email`, falling back to `andres@mycreativestrategist.com`. To set it explicitly, run in the SQL editor:
 >
@@ -235,6 +252,19 @@ If you have logo assets in Google Drive, drop them into `public/brand/` and upda
 - **Middleware enforces auth on `/admin/*`** by checking the Supabase session and the `ADMIN_ALLOWED_EMAIL` env var. The route handlers double-check via `requireAdmin()` so that direct API calls without the cookie also get blocked.
 
 ---
+
+## Adding a new intake
+
+The intake system is designed to be extended. To add (for example) a messaging intake:
+
+1. Add `'messaging'` to the `IntakeKind` union in `src/lib/intakes/types.ts`.
+2. Create `src/lib/intakes/messaging.ts` with sections, a Zod responses schema, and an `IntakeDefinition`.
+3. Register it in `src/lib/intakes/index.ts` (`INTAKES` and `INTAKE_ORDER`).
+4. Run a small SQL migration to extend the `intake_kind` enum:
+   ```sql
+   alter type intake_kind add value if not exists 'messaging';
+   ```
+5. Done. The new intake is live at `/intake/messaging`, shows up on the public picker and the admin filter, and produces its own branded PDF and emails — no other code changes required.
 
 ## License
 

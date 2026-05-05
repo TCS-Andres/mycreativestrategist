@@ -27,11 +27,11 @@ export async function sendAdminNotification(
   return resend().emails.send({
     from: FROM,
     to: [toEmail],
-    subject: `New branding intake · ${props.businessName}`,
+    subject: `New ${props.intakeLabel.toLowerCase()} · ${props.businessName}`,
     react: AdminNotificationEmail(props),
     attachments: [
       {
-        filename: `branding-intake-${slug(props.businessName)}.pdf`,
+        filename: `${props.intakeLabel.toLowerCase().replace(/\s+/g, '-')}-${slug(props.businessName)}.pdf`,
         content: pdfBuffer,
       },
     ],
@@ -50,13 +50,19 @@ export async function sendClientConfirmation(
   });
 }
 
-export async function sendResumeLink(args: { to: string; token: string; businessName?: string }) {
-  const url = `${APP_URL}/intake?resume=${encodeURIComponent(args.token)}`;
+export async function sendResumeLink(args: {
+  to: string;
+  token: string;
+  intakeSlug: string;
+  intakeLabel: string;
+  businessName?: string;
+}) {
+  const url = `${APP_URL}/intake/${args.intakeSlug}?resume=${encodeURIComponent(args.token)}`;
   return resend().emails.send({
     from: FROM,
     to: [args.to],
-    subject: 'Your branding intake — pick up where you left off',
-    react: ResumeLinkEmail({ resumeUrl: url, businessName: args.businessName }),
+    subject: `Your ${args.intakeLabel.toLowerCase()} — pick up where you left off`,
+    react: ResumeLinkEmail({ resumeUrl: url, businessName: args.businessName, intakeLabel: args.intakeLabel }),
   });
 }
 

@@ -1,26 +1,26 @@
 import { NextResponse } from 'next/server';
-import { submissionPayloadSchema } from '@/lib/schema';
+import { validateSubmission } from '@/lib/schema';
 import { getServiceRoleSupabase, STORAGE_BUCKET } from '@/lib/supabase/admin';
 import { renderSubmissionPdf } from '@/lib/pdf/render';
 import { sendAdminNotification, sendClientConfirmation } from '@/lib/email/send';
 import { deleteDraft, createSignedUrl, getSettings } from '@/lib/db';
-import { getOptionLabel } from '@/lib/questions';
-import { FILE_CATEGORY_LABELS } from '@/lib/types';
+import { getIntake, getOptionLabel, intakeFileCategoryLabel } from '@/lib/intakes';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function POST(request: Request) {
   const json = await request.json().catch(() => null);
-  const parsed = submissionPayloadSchema.safeParse(json);
-  if (!parsed.success) {
+  const validated = validateSubmission(json);
+  if (!validated.ok) {
     return NextResponse.json(
-      { error: 'Invalid submission', issues: parsed.error.issues },
+      { error: validated.error, issues: validated.issues },
       { status: 400 },
     );
   }
 
-  const { responses, uploaded_files, resume_token } = parsed.data;
+  const { kind, responses, uploaded_files, resume_token } = validated;
+  const intake = getIntake(kind)!;
   const supabase = getServiceRoleSupabase() as unknown as {
     from: (table: string) => any;
     storage: ReturnType<typeof getServiceRoleSupabase>['storage'];
@@ -29,10 +29,11 @@ export async function POST(request: Request) {
   const { data: insertedRaw, error: insertError } = await supabase
     .from('submissions')
     .insert({
-      business_name: responses.business_name,
-      contact_name: responses.contact_name,
-      contact_email: responses.contact_email,
-      contact_phone: responses.contact_phone ?? null,
+      kind,
+      business_name: (responses.business_name as string) ?? '',
+      contact_name: (responses.contact_name as string) ?? '',
+      contact_email: (responses.contact_email as string) ?? '',
+      contact_phone: (responses.contact_phone as string) ?? null,
       status: 'new',
       responses,
       resume_token: null,
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
   const submissionId: string = inserted.id;
   const submittedAt: string = inserted.submitted_at;
 
-  // Move uploaded files from draft path -> {submission_id}/{category}/{name} so they live with the record
+  // Move uploaded files from draft path -> {submission_id}/{category}/{name}
   const persistedFiles: { category: string; file_name: string; file_path: string; file_size: number; mime_type: string }[] = [];
   for (const f of uploaded_files) {
     const newPath = `${submissionId}/${f.category}/${f.file_path.split('/').pop()}`;
@@ -97,6 +98,7 @@ export async function POST(request: Request) {
   let pdfBuffer: Buffer;
   try {
     pdfBuffer = await renderSubmissionPdf({
+      kind,
       responses,
       submittedAt,
       files: persistedFiles.map((f) => ({ category: f.category as never, file_name: f.file_name })),
@@ -106,7 +108,6 @@ export async function POST(request: Request) {
     pdfBuffer = Buffer.from('PDF rendering failed. See dashboard for full submission.', 'utf-8');
   }
 
-  // Compose email content
   const settings = (await getSettings().catch(() => ({}))) as Record<string, unknown>;
   const adminEmail =
     (settings['admin_notification_email'] as string | undefined) ??
@@ -114,14 +115,14 @@ export async function POST(request: Request) {
     'andres@mycreativestrategist.com';
   const subject =
     (settings['client_confirmation_subject'] as string | undefined) ??
-    'I received your branding intake';
+    `I received your ${intake.label.toLowerCase()}`;
   const bodyCopy =
     (settings['client_confirmation_body'] as string | undefined) ??
     'Thank you for taking the time to fill that out. I will review your responses carefully and reach out within two business days with next steps.';
 
   const fileLinks = await Promise.all(
     persistedFiles.map(async (f) => ({
-      category: FILE_CATEGORY_LABELS[f.category as keyof typeof FILE_CATEGORY_LABELS] ?? f.category,
+      category: intakeFileCategoryLabel(intake, f.category),
       file_name: f.file_name,
       url: await createSignedUrl(f.file_path).catch(() => '#'),
     })),
@@ -129,17 +130,27 @@ export async function POST(request: Request) {
 
   const submissionUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/admin/submissions/${submissionId}`;
 
-  // Fire emails. Don't fail the whole submission if either fails — the record is already saved.
+  const businessName = (responses.business_name as string) ?? '';
+  const topGoals =
+    (responses.top_three_goals as string) ??
+    (responses.first_feeling as string) ??
+    '';
+  const budgetLabel = responses.budget
+    ? getOptionLabel(kind, 'budget', String(responses.budget))
+    : 'Not specified';
+  const timeline = (responses.timeline as string) ?? 'Not specified';
+
   try {
     await sendAdminNotification({
       toEmail: adminEmail,
-      businessName: responses.business_name,
-      contactName: responses.contact_name,
-      contactEmail: responses.contact_email,
-      contactPhone: responses.contact_phone ?? undefined,
-      topGoals: responses.top_three_goals ?? '',
-      budget: getOptionLabel('budget', responses.budget),
-      timeline: responses.timeline,
+      intakeLabel: intake.label,
+      businessName,
+      contactName: (responses.contact_name as string) ?? '',
+      contactEmail: (responses.contact_email as string) ?? '',
+      contactPhone: (responses.contact_phone as string) ?? undefined,
+      topGoals,
+      budget: budgetLabel,
+      timeline,
       submissionUrl,
       files: fileLinks,
       pdfBuffer,
@@ -150,10 +161,10 @@ export async function POST(request: Request) {
 
   try {
     await sendClientConfirmation({
-      toEmail: responses.contact_email,
+      toEmail: (responses.contact_email as string) ?? '',
       subject,
-      contactName: responses.contact_name,
-      businessName: responses.business_name,
+      contactName: (responses.contact_name as string) ?? '',
+      businessName,
       bodyCopy,
       calendlyUrl: process.env.NEXT_PUBLIC_CALENDLY_URL ?? 'https://calendly.com/andres-hdw/30min',
     });

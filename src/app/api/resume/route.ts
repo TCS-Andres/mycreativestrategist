@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { randomBytes } from 'node:crypto';
 import { upsertDraft, getDraftByToken } from '@/lib/db';
 import { sendResumeLink } from '@/lib/email/send';
+import { getIntake } from '@/lib/intakes';
 
 export const runtime = 'nodejs';
 
@@ -11,8 +12,12 @@ function newToken() {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  if (!body || typeof body.email !== 'string' || !body.responses) {
-    return NextResponse.json({ error: 'Missing email or responses' }, { status: 400 });
+  if (!body || typeof body.email !== 'string' || !body.responses || typeof body.kind !== 'string') {
+    return NextResponse.json({ error: 'Missing email, kind, or responses' }, { status: 400 });
+  }
+  const intake = getIntake(body.kind);
+  if (!intake) {
+    return NextResponse.json({ error: 'Unknown intake kind' }, { status: 400 });
   }
   const email = body.email.trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -25,6 +30,7 @@ export async function POST(request: Request) {
   try {
     await upsertDraft({
       resume_token: token,
+      kind: intake.kind,
       contact_email: email,
       business_name: typeof body.business_name === 'string' ? body.business_name : undefined,
       responses: body.responses,
@@ -33,6 +39,8 @@ export async function POST(request: Request) {
     await sendResumeLink({
       to: email,
       token,
+      intakeSlug: intake.slug,
+      intakeLabel: intake.label,
       businessName: typeof body.business_name === 'string' ? body.business_name : undefined,
     });
     return NextResponse.json({ token });
@@ -46,12 +54,22 @@ export async function POST(request: Request) {
 // Periodic autosave from the form (no email).
 export async function PUT(request: Request) {
   const body = await request.json().catch(() => null);
-  if (!body || typeof body.token !== 'string' || typeof body.email !== 'string') {
+  if (
+    !body ||
+    typeof body.token !== 'string' ||
+    typeof body.email !== 'string' ||
+    typeof body.kind !== 'string'
+  ) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
+  const intake = getIntake(body.kind);
+  if (!intake) {
+    return NextResponse.json({ error: 'Unknown intake kind' }, { status: 400 });
   }
   try {
     await upsertDraft({
       resume_token: body.token,
+      kind: intake.kind,
       contact_email: body.email.trim().toLowerCase(),
       business_name: typeof body.business_name === 'string' ? body.business_name : undefined,
       responses: body.responses ?? {},
@@ -64,11 +82,10 @@ export async function PUT(request: Request) {
   }
 }
 
-// Optional GET to verify a token is valid (used by the intake page server side too).
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const token = url.searchParams.get('token');
   if (!token) return NextResponse.json({ valid: false }, { status: 400 });
   const draft = await getDraftByToken(token);
-  return NextResponse.json({ valid: !!draft });
+  return NextResponse.json({ valid: !!draft, kind: (draft as { kind?: string } | null)?.kind ?? null });
 }

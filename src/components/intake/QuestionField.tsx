@@ -8,10 +8,11 @@ import { Select } from '@/components/ui/Select';
 import { Slider } from '@/components/ui/Slider';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { FileDropzone, type UploadedFile } from './FileDropzone';
-import type { Question } from '@/lib/questions';
+import type { IntakeKind, Question } from '@/lib/intakes/types';
 
 interface Props {
   question: Question;
+  intakeKind: IntakeKind;
   control: Control<Record<string, unknown>>;
   errors: FieldErrors<Record<string, unknown>>;
   files: Record<string, UploadedFile[]>;
@@ -19,7 +20,15 @@ interface Props {
   draftId: string;
 }
 
-export function QuestionField({ question, control, errors, files, onFilesChange, draftId }: Props) {
+export function QuestionField({
+  question,
+  intakeKind,
+  control,
+  errors,
+  files,
+  onFilesChange,
+  draftId,
+}: Props) {
   const error = errors[question.id]?.message as string | undefined;
   // Subscribe to a hide-when toggle without re-rendering the whole form.
   const hideWhenValue = useWatch({
@@ -58,6 +67,7 @@ export function QuestionField({ question, control, errors, files, onFilesChange,
       >
         <FileDropzone
           category={question.category!}
+          intakeKind={intakeKind}
           accept={question.accept!}
           maxFiles={question.maxFiles ?? 1}
           maxSizeMb={question.maxSizeMb ?? 25}

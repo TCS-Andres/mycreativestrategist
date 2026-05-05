@@ -1,32 +1,32 @@
 import { NextResponse } from 'next/server';
 import { getServiceRoleSupabase, STORAGE_BUCKET } from '@/lib/supabase/admin';
-import { FILE_QUESTIONS } from '@/lib/questions';
+import { getIntake, getFileQuestions } from '@/lib/intakes';
 import { safeFilename } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
-
-const VALID_CATEGORIES = new Set(FILE_QUESTIONS.map((q) => q.category));
 
 export async function POST(request: Request) {
   const formData = await request.formData();
   const file = formData.get('file');
   const category = String(formData.get('category') ?? '');
   const draftId = String(formData.get('draftId') ?? '');
+  const kind = String(formData.get('kind') ?? '');
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 });
   }
-  if (!VALID_CATEGORIES.has(category as never)) {
-    return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
+  const intake = getIntake(kind);
+  if (!intake) {
+    return NextResponse.json({ error: 'Unknown intake kind' }, { status: 400 });
+  }
+  const fileQuestions = getFileQuestions(intake.kind);
+  const question = fileQuestions.find((q) => q.category === category);
+  if (!question) {
+    return NextResponse.json({ error: 'Unknown category for this intake' }, { status: 400 });
   }
   if (!/^draft_[a-z0-9_]{6,40}$/i.test(draftId)) {
     return NextResponse.json({ error: 'Invalid draft id' }, { status: 400 });
-  }
-
-  const question = FILE_QUESTIONS.find((q) => q.category === category);
-  if (!question) {
-    return NextResponse.json({ error: 'Unknown category' }, { status: 400 });
   }
 
   const maxBytes = (question.maxSizeMb ?? 50) * 1024 * 1024;

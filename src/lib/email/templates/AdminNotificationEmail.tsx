@@ -17,6 +17,7 @@ interface FileLink {
 }
 
 export interface AdminNotificationProps {
+  intakeLabel: string;
   businessName: string;
   contactName: string;
   contactEmail: string;
@@ -37,12 +38,12 @@ export function AdminNotificationEmail(props: AdminNotificationProps) {
   return (
     <Html>
       <Head />
-      <Preview>New branding intake from {props.businessName}</Preview>
+      <Preview>New {props.intakeLabel.toLowerCase()} from {props.businessName}</Preview>
       <Body style={{ background: cream, fontFamily: 'Helvetica, Arial, sans-serif', margin: 0, padding: 0 }}>
         <Container style={{ maxWidth: 600, margin: '0 auto', padding: '32px 24px' }}>
           <Section>
             <Text style={{ color: orange, textTransform: 'uppercase', letterSpacing: 3, fontSize: 11, margin: 0 }}>
-              The Creative Strategist · New intake
+              The Creative Strategist · {props.intakeLabel}
             </Text>
             <Heading style={{ color: navy, fontSize: 28, lineHeight: '1.2', margin: '8px 0 16px' }}>
               {props.businessName}
@@ -57,17 +58,21 @@ export function AdminNotificationEmail(props: AdminNotificationProps) {
             {props.topGoals ? (
               <>
                 <Text style={{ color: navy, fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>
-                  Top three goals
+                  Quick read
                 </Text>
                 <Text style={{ color: navy, fontSize: 14, margin: '6px 0 14px', whiteSpace: 'pre-wrap' }}>
                   {props.topGoals}
                 </Text>
               </>
             ) : null}
-            <Text style={{ color: navy, fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>
-              Budget
-            </Text>
-            <Text style={{ color: navy, fontSize: 14, margin: '6px 0 14px' }}>{props.budget || 'Not specified'}</Text>
+            {props.budget && props.budget !== 'Not specified' ? (
+              <>
+                <Text style={{ color: navy, fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>
+                  Budget
+                </Text>
+                <Text style={{ color: navy, fontSize: 14, margin: '6px 0 14px' }}>{props.budget}</Text>
+              </>
+            ) : null}
             <Text style={{ color: navy, fontWeight: 600, fontSize: 12, textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>
               Timeline
             </Text>

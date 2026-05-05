@@ -13,17 +13,19 @@ function storage() {
 
 export async function listSubmissions(opts?: {
   status?: SubmissionStatus;
+  kind?: string;
   search?: string;
   limit?: number;
 }) {
   const supabase = db();
   let query = supabase
     .from('submissions')
-    .select('id, business_name, contact_name, contact_email, status, submitted_at, reviewed_at')
+    .select('id, kind, business_name, contact_name, contact_email, status, submitted_at, reviewed_at')
     .order('submitted_at', { ascending: false })
     .limit(opts?.limit ?? 200);
 
   if (opts?.status) query = query.eq('status', opts.status);
+  if (opts?.kind) query = query.eq('kind', opts.kind);
   if (opts?.search) {
     const term = `%${opts.search}%`;
     query = query.or(`business_name.ilike.${term},contact_name.ilike.${term},contact_email.ilike.${term}`);
@@ -33,7 +35,7 @@ export async function listSubmissions(opts?: {
   if (error) throw error;
   return (data ?? []) as Pick<
     Submission,
-    'id' | 'business_name' | 'contact_name' | 'contact_email' | 'status' | 'submitted_at' | 'reviewed_at'
+    'id' | 'kind' | 'business_name' | 'contact_name' | 'contact_email' | 'status' | 'submitted_at' | 'reviewed_at'
   >[];
 }
 
@@ -113,6 +115,7 @@ export async function getDraftByToken(token: string) {
 
 export async function upsertDraft(input: {
   resume_token: string;
+  kind: string;
   contact_email: string;
   business_name?: string;
   responses: unknown;
@@ -124,6 +127,7 @@ export async function upsertDraft(input: {
     .upsert(
       {
         resume_token: input.resume_token,
+        kind: input.kind,
         contact_email: input.contact_email,
         business_name: input.business_name,
         responses: input.responses,

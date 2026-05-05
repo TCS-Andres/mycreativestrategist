@@ -13,13 +13,14 @@ import {
 export interface ResumeLinkProps {
   resumeUrl: string;
   businessName?: string;
+  intakeLabel?: string;
 }
 
 const navy = '#1C192A';
 const orange = '#F28D3D';
 const cream = '#FAF7F2';
 
-export function ResumeLinkEmail({ resumeUrl, businessName }: ResumeLinkProps) {
+export function ResumeLinkEmail({ resumeUrl, businessName, intakeLabel = 'intake' }: ResumeLinkProps) {
   return (
     <Html>
       <Head />
@@ -30,12 +31,12 @@ export function ResumeLinkEmail({ resumeUrl, businessName }: ResumeLinkProps) {
             The Creative Strategist
           </Text>
           <Heading style={{ color: navy, fontSize: 26, lineHeight: '1.2', margin: '8px 0 16px' }}>
-            Your saved branding intake
+            Your saved {intakeLabel.toLowerCase()}
           </Heading>
           <Text style={{ color: navy, fontSize: 15, lineHeight: '1.6' }}>
             {businessName
-              ? `Here is the link to continue the intake for ${businessName}.`
-              : 'Here is the link to continue your intake.'}{' '}
+              ? `Here is the link to continue the ${intakeLabel.toLowerCase()} for ${businessName}.`
+              : `Here is the link to continue your ${intakeLabel.toLowerCase()}.`}{' '}
             It will pick up exactly where you left off.
           </Text>
           <Section style={{ margin: '24px 0' }}>

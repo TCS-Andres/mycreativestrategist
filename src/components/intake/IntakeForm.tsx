@@ -9,10 +9,9 @@ import { Field } from '@/components/ui/Field';
 import { ProgressBar } from './ProgressBar';
 import { QuestionField } from './QuestionField';
 import type { UploadedFile } from './FileDropzone';
-import { SECTIONS, FILE_QUESTIONS } from '@/lib/questions';
-import { sectionSchemas } from '@/lib/schema';
+import type { IntakeDefinition, IntakeKind, Section } from '@/lib/intakes/types';
 
-const STORAGE_KEY = 'tcs_intake_state_v1';
+const STORAGE_KEY_PREFIX = 'tcs_intake_state_v2_';
 
 type FilesByQuestion = Record<string, UploadedFile[]>;
 
@@ -33,10 +32,14 @@ function newDraftId() {
   );
 }
 
-function loadPersisted(): PersistedState | null {
+function storageKey(kind: IntakeKind) {
+  return `${STORAGE_KEY_PREFIX}${kind}`;
+}
+
+function loadPersisted(kind: IntakeKind): PersistedState | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey(kind));
     if (!raw) return null;
     return JSON.parse(raw) as PersistedState;
   } catch {
@@ -44,23 +47,23 @@ function loadPersisted(): PersistedState | null {
   }
 }
 
-function savePersisted(state: PersistedState) {
+function savePersisted(kind: IntakeKind, state: PersistedState) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(storageKey(kind), JSON.stringify(state));
   } catch {
     // localStorage full or denied
   }
 }
 
-function clearPersisted() {
+function clearPersisted(kind: IntakeKind) {
   if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem(storageKey(kind));
 }
 
-function buildAllDefaults(responses: Record<string, unknown>) {
+function buildAllDefaults(sections: Section[], responses: Record<string, unknown>) {
   const d: Record<string, unknown> = {};
-  for (const section of SECTIONS) {
+  for (const section of sections) {
     for (const q of section.questions) {
       if (q.kind === 'upload') continue;
       const v = responses[q.id];
@@ -80,13 +83,21 @@ function buildAllDefaults(responses: Record<string, unknown>) {
   return d;
 }
 
-export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
+export function IntakeForm({
+  intake,
+  initial,
+}: {
+  intake: IntakeDefinition;
+  initial?: Partial<PersistedState>;
+}) {
   const router = useRouter();
+  const sections = intake.sections;
+  const fileQuestions = sections.flatMap((s) => s.questions).filter((q) => q.kind === 'upload');
 
-  // Compute the starting state ONCE. Everything else lives in RHF or focused useState slots.
+  // Compute the starting state ONCE.
   const initialRef = React.useRef<PersistedState | null>(null);
   if (initialRef.current === null) {
-    const persisted = initial && Object.keys(initial).length ? null : loadPersisted();
+    const persisted = initial && Object.keys(initial).length ? null : loadPersisted(intake.kind);
     initialRef.current = {
       draftId: initial?.draftId ?? persisted?.draftId ?? newDraftId(),
       resumeToken: initial?.resumeToken ?? persisted?.resumeToken,
@@ -112,14 +123,12 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
   const [saveErrorMsg, setSaveErrorMsg] = React.useState<string | null>(null);
   const [direction, setDirection] = React.useState<1 | -1>(1);
 
-  const currentSection = SECTIONS[sectionIndex];
-  const isLast = sectionIndex === SECTIONS.length - 1;
+  const currentSection = sections[sectionIndex];
+  const isLast = sectionIndex === sections.length - 1;
 
-  // Build defaults across ALL questions exactly once. The form owns these values for the
-  // whole session, so navigating between sections never resets anything.
   const allDefaults = React.useMemo(
-    () => buildAllDefaults(initialState.responses),
-    [initialState.responses],
+    () => buildAllDefaults(sections, initialState.responses),
+    [sections, initialState.responses],
   );
 
   const form = useForm<Record<string, unknown>>({
@@ -128,15 +137,12 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
     shouldUnregister: false,
   });
 
-  // Persist form values + non-form state to localStorage, debounced.
-  // We do NOT call setState of any kind in this subscription, so it does not
-  // re-render the form or fight with autofill.
   React.useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const subscription = form.watch((values) => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        savePersisted({
+        savePersisted(intake.kind, {
           draftId: initialState.draftId,
           resumeToken,
           resumeEmail,
@@ -150,12 +156,10 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
       if (timer) clearTimeout(timer);
       subscription.unsubscribe();
     };
-  }, [form, initialState.draftId, resumeToken, resumeEmail, files, sectionIndex]);
+  }, [form, intake.kind, initialState.draftId, resumeToken, resumeEmail, files, sectionIndex]);
 
-  // Save on section change / file changes too, so localStorage stays current even if the
-  // watch debounce hasn't fired.
   React.useEffect(() => {
-    savePersisted({
+    savePersisted(intake.kind, {
       draftId: initialState.draftId,
       resumeToken,
       resumeEmail,
@@ -163,9 +167,8 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
       files,
       sectionIndex,
     });
-  }, [sectionIndex, files, resumeToken, resumeEmail, initialState.draftId, form]);
+  }, [sectionIndex, files, resumeToken, resumeEmail, intake.kind, initialState.draftId, form]);
 
-  // Periodic server-side autosave, only after the user has provided a resume email.
   React.useEffect(() => {
     if (!resumeToken || !resumeEmail) return;
     const id = setInterval(() => {
@@ -176,6 +179,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
         body: JSON.stringify({
           token: resumeToken,
           email: resumeEmail,
+          kind: intake.kind,
           business_name: (values.business_name as string) ?? '',
           responses: values,
           files,
@@ -183,7 +187,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
       }).catch(() => {});
     }, 15000);
     return () => clearInterval(id);
-  }, [resumeToken, resumeEmail, files, form]);
+  }, [resumeToken, resumeEmail, files, form, intake.kind]);
 
   function handleFilesChange(questionId: string, list: UploadedFile[]) {
     setFiles((prev) => ({ ...prev, [questionId]: list }));
@@ -194,7 +198,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
       await handleSubmit();
       return;
     }
-    const schema = sectionSchemas[currentSection.id];
+    const schema = intake.sectionSchemas[currentSection.id];
     const values = form.getValues();
     const result = (
       schema as {
@@ -211,10 +215,9 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
       }
       return;
     }
-    // Clear any stale errors on this section's fields before advancing.
     form.clearErrors(currentSection.questions.map((q) => q.id));
     setDirection(1);
-    setSectionIndex((i) => Math.min(i + 1, SECTIONS.length - 1));
+    setSectionIndex((i) => Math.min(i + 1, sections.length - 1));
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -229,11 +232,12 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
     setSubmitError(null);
     try {
       const values = form.getValues();
-      const uploaded = FILE_QUESTIONS.flatMap((q) => files[q.id] ?? []);
+      const uploaded = fileQuestions.flatMap((q) => files[q.id] ?? []);
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          kind: intake.kind,
           responses: values,
           uploaded_files: uploaded,
           resume_token: resumeToken,
@@ -244,7 +248,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
         throw new Error(j.error ?? 'Something went wrong submitting your responses.');
       }
       const data = await res.json();
-      clearPersisted();
+      clearPersisted(intake.kind);
       router.push(`/thank-you?id=${data.id}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Submission failed.';
@@ -263,6 +267,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: saveEmail,
+          kind: intake.kind,
           business_name: saveBusinessName || (values.business_name as string) || '',
           responses: values,
           files,
@@ -286,7 +291,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
 
   return (
     <>
-      <ProgressBar currentIndex={sectionIndex} />
+      <ProgressBar sections={sections} currentIndex={sectionIndex} />
 
       <div className="container max-w-3xl py-10 sm:py-16">
         <AnimatePresence mode="wait" initial={false} custom={direction}>
@@ -301,7 +306,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
           >
             <header className="space-y-3">
               <p className="eyebrow">
-                Section {currentSection.index} of {SECTIONS.length}
+                Section {currentSection.index} of {sections.length}
               </p>
               <h2 className="text-3xl font-semibold sm:text-4xl">{currentSection.title}</h2>
               <p className="max-w-2xl text-base leading-relaxed text-brand-navy/80">
@@ -314,6 +319,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
                 <QuestionField
                   key={q.id}
                   question={q}
+                  intakeKind={intake.kind}
                   control={form.control as never}
                   errors={form.formState.errors}
                   files={files}

@@ -3,6 +3,8 @@ import { listSubmissions } from '@/lib/db';
 import { StatusBadge } from '@/components/ui/Badge';
 import { formatDateTime, truncate } from '@/lib/utils';
 import type { SubmissionStatus } from '@/lib/types';
+import { INTAKES, INTAKE_ORDER } from '@/lib/intakes';
+import type { IntakeKind } from '@/lib/intakes/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,16 +19,28 @@ const STATUS_FILTERS: { value: SubmissionStatus | 'all'; label: string }[] = [
 export default async function AdminHomePage({
   searchParams,
 }: {
-  searchParams: { status?: string; q?: string };
+  searchParams: { status?: string; kind?: string; q?: string };
 }) {
   const rawStatus = searchParams.status as SubmissionStatus | 'all' | undefined;
   const status: SubmissionStatus | 'all' = rawStatus ?? 'all';
+  const kind = (searchParams.kind as IntakeKind | 'all' | undefined) ?? 'all';
   const search = searchParams.q?.trim() || undefined;
 
   const submissions = await listSubmissions({
     status: status !== 'all' ? status : undefined,
+    kind: kind !== 'all' ? kind : undefined,
     search,
   });
+
+  const buildLink = (over: { status?: string; kind?: string }) => {
+    const params = new URLSearchParams();
+    const s = over.status ?? (status !== 'all' ? status : undefined);
+    const k = over.kind ?? (kind !== 'all' ? kind : undefined);
+    if (s) params.set('status', s);
+    if (k) params.set('kind', k);
+    if (search) params.set('q', search);
+    return `/admin${params.size ? `?${params.toString()}` : ''}`;
+  };
 
   return (
     <div className="container py-10">
@@ -40,9 +54,8 @@ export default async function AdminHomePage({
           </p>
         </div>
         <form className="flex items-center gap-2" action="/admin">
-          {status !== 'all' && (
-            <input type="hidden" name="status" value={status} />
-          )}
+          {status !== 'all' && <input type="hidden" name="status" value={status} />}
+          {kind !== 'all' && <input type="hidden" name="kind" value={kind} />}
           <input
             type="search"
             name="q"
@@ -59,27 +72,57 @@ export default async function AdminHomePage({
         </form>
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        {STATUS_FILTERS.map((opt) => {
-          const active = (status ?? 'all') === opt.value;
-          const params = new URLSearchParams();
-          if (opt.value !== 'all') params.set('status', opt.value);
-          if (search) params.set('q', search);
-          const href = `/admin${params.size ? `?${params.toString()}` : ''}`;
-          return (
+      <div className="mt-6 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-heading text-xs uppercase tracking-[0.16em] text-muted-foreground">
+            Status
+          </span>
+          {STATUS_FILTERS.map((opt) => {
+            const active = status === opt.value;
+            return (
+              <Link
+                key={opt.value}
+                href={buildLink({ status: opt.value === 'all' ? '' : opt.value })}
+                className={`rounded-full border px-4 py-1.5 text-xs font-heading font-semibold transition ${
+                  active
+                    ? 'border-brand-navy bg-brand-navy text-brand-cream'
+                    : 'border-border bg-white text-brand-navy hover:border-brand-navy'
+                }`}
+              >
+                {opt.label}
+              </Link>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-heading text-xs uppercase tracking-[0.16em] text-muted-foreground">
+            Intake
+          </span>
+          <Link
+            href={buildLink({ kind: '' })}
+            className={`rounded-full border px-4 py-1.5 text-xs font-heading font-semibold transition ${
+              kind === 'all'
+                ? 'border-brand-navy bg-brand-navy text-brand-cream'
+                : 'border-border bg-white text-brand-navy hover:border-brand-navy'
+            }`}
+          >
+            All
+          </Link>
+          {INTAKE_ORDER.map((k) => (
             <Link
-              key={opt.value}
-              href={href}
+              key={k}
+              href={buildLink({ kind: k })}
               className={`rounded-full border px-4 py-1.5 text-xs font-heading font-semibold transition ${
-                active
+                kind === k
                   ? 'border-brand-navy bg-brand-navy text-brand-cream'
                   : 'border-border bg-white text-brand-navy hover:border-brand-navy'
               }`}
             >
-              {opt.label}
+              {INTAKES[k].label}
             </Link>
-          );
-        })}
+          ))}
+        </div>
       </div>
 
       <div className="mt-8 overflow-hidden rounded-lg border border-border bg-white shadow-soft">
@@ -88,6 +131,7 @@ export default async function AdminHomePage({
             <tr>
               <th className="px-5 py-3 font-heading">Business</th>
               <th className="px-5 py-3 font-heading">Contact</th>
+              <th className="px-5 py-3 font-heading">Intake</th>
               <th className="px-5 py-3 font-heading">Status</th>
               <th className="px-5 py-3 font-heading">Submitted</th>
               <th className="px-5 py-3" />
@@ -96,7 +140,7 @@ export default async function AdminHomePage({
           <tbody>
             {submissions.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-12 text-center text-muted-foreground">
+                <td colSpan={6} className="px-5 py-12 text-center text-muted-foreground">
                   No submissions yet. New ones land here automatically.
                 </td>
               </tr>
@@ -114,6 +158,11 @@ export default async function AdminHomePage({
                 <td className="px-5 py-4 align-top text-muted-foreground">
                   <div className="text-brand-navy">{s.contact_name}</div>
                   <div className="text-xs">{s.contact_email}</div>
+                </td>
+                <td className="px-5 py-4 align-top">
+                  <span className="inline-flex items-center rounded-md bg-brand-cream px-2 py-1 font-heading text-xs font-semibold text-brand-navy">
+                    {INTAKES[s.kind]?.label ?? s.kind}
+                  </span>
                 </td>
                 <td className="px-5 py-4 align-top">
                   <StatusBadge status={s.status} />

@@ -1,11 +1,18 @@
 'use client';
 import { motion } from 'framer-motion';
-import { SECTIONS } from '@/lib/questions';
+import type { Section } from '@/lib/intakes/types';
 
-export function ProgressBar({ currentIndex }: { currentIndex: number }) {
-  const total = SECTIONS.length;
+export function ProgressBar({
+  sections,
+  currentIndex,
+}: {
+  sections: Section[];
+  currentIndex: number;
+}) {
+  const total = sections.length;
   const pct = Math.round(((currentIndex + 1) / total) * 100);
-  const section = SECTIONS[currentIndex];
+  const section = sections[currentIndex];
+  if (!section) return null;
 
   return (
     <div className="sticky top-0 z-30 border-b border-border/70 bg-brand-cream/95 backdrop-blur supports-[backdrop-filter]:bg-brand-cream/70">
