@@ -13,10 +13,12 @@ const longText = (label: string, required: boolean) =>
     : z.string().trim().max(8000).optional().or(z.literal('').transform(() => undefined));
 
 const emailSchema = z.string().trim().email('Please enter a valid email');
-const urlSchema = z
+// Permissive: accept anything from "mycreativestrategist.com" to "https://...",
+// trim down to a sane max length, and treat blanks as undefined.
+const websiteSchema = z
   .string()
   .trim()
-  .url('Please include the full URL, with https://')
+  .max(300, 'That is too long for a URL.')
   .optional()
   .or(z.literal('').transform(() => undefined));
 const telSchema = z
@@ -41,7 +43,8 @@ export const responsesSchema = z.object({
   role_title: requiredText('Role or title'),
   contact_email: emailSchema,
   contact_phone: telSchema,
-  website_url: urlSchema,
+  website_url: websiteSchema,
+  no_website: z.boolean().optional(),
   industry: requiredText('Industry or category'),
   year_founded: yearSchema,
   team_size: z.enum(['solo', '2-5', '6-20', '21-50', '51-200', '200+']),

@@ -1,6 +1,6 @@
 'use client';
 import * as React from 'react';
-import { Controller, type Control, type FieldErrors } from 'react-hook-form';
+import { Controller, useWatch, type Control, type FieldErrors } from 'react-hook-form';
 import { Field } from '@/components/ui/Field';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
@@ -21,6 +21,32 @@ interface Props {
 
 export function QuestionField({ question, control, errors, files, onFilesChange, draftId }: Props) {
   const error = errors[question.id]?.message as string | undefined;
+  // Subscribe to a hide-when toggle without re-rendering the whole form.
+  const hideWhenValue = useWatch({
+    control,
+    name: question.hideWhen ?? '__never__',
+  });
+  if (question.hideWhen && Boolean(hideWhenValue)) return null;
+
+  if (question.kind === 'boolean') {
+    return (
+      <Controller
+        control={control}
+        name={question.id}
+        render={({ field }) => (
+          <div className={question.number === undefined ? 'pl-8' : undefined}>
+            <Checkbox
+              label={question.label}
+              checked={Boolean(field.value)}
+              onChange={(e) => field.onChange(e.target.checked)}
+              name={question.id}
+              id={question.id}
+            />
+          </div>
+        )}
+      />
+    );
+  }
 
   if (question.kind === 'upload') {
     return (

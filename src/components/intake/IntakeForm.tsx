@@ -70,6 +70,8 @@ function buildAllDefaults(responses: Record<string, unknown>) {
         d[q.id] = [];
       } else if (q.kind === 'slider') {
         d[q.id] = Math.round(((q.min ?? 1) + (q.max ?? 10)) / 2);
+      } else if (q.kind === 'boolean') {
+        d[q.id] = false;
       } else {
         d[q.id] = '';
       }

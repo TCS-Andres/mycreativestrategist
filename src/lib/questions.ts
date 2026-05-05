@@ -8,13 +8,15 @@ export type FieldKind =
   | 'select'
   | 'multiselect'
   | 'slider'
+  | 'boolean'
   | 'upload';
 
 export type SelectOption = { label: string; value: string };
 
 export type Question = {
   id: string;
-  number: number;
+  /** Visible question number. Omit for sub-fields that should not be numbered. */
+  number?: number;
   label: string;
   helper?: string;
   kind: FieldKind;
@@ -31,6 +33,8 @@ export type Question = {
   maxSizeMb?: number;
   category?: 'logo' | 'brand_guide' | 'photography' | 'marketing_materials';
   autoComplete?: string;
+  /** When set, this field is hidden whenever the named boolean field is true. */
+  hideWhen?: string;
 };
 
 export type Section = {
@@ -102,7 +106,23 @@ export const SECTIONS: Section[] = [
       { id: 'role_title', number: 3, label: 'Role or title', kind: 'text', required: true, autoComplete: 'organization-title' },
       { id: 'contact_email', number: 4, label: 'Email address', kind: 'email', required: true, autoComplete: 'email' },
       { id: 'contact_phone', number: 5, label: 'Phone number', kind: 'tel', required: false, autoComplete: 'tel' },
-      { id: 'website_url', number: 6, label: 'Website URL', kind: 'url', required: false, placeholder: 'https://', autoComplete: 'url' },
+      {
+        id: 'website_url',
+        number: 6,
+        label: 'Website',
+        helper: 'Domain or full URL is fine. No need to include https://.',
+        kind: 'text',
+        required: false,
+        placeholder: 'mycreativestrategist.com',
+        autoComplete: 'url',
+        hideWhen: 'no_website',
+      },
+      {
+        id: 'no_website',
+        label: 'I don’t have a website yet',
+        kind: 'boolean',
+        required: false,
+      },
       { id: 'industry', number: 7, label: 'Industry or category', kind: 'text', required: true, autoComplete: 'off' },
       { id: 'year_founded', number: 8, label: 'Year founded', kind: 'number', required: true, min: 1800, max: new Date().getFullYear(), autoComplete: 'off' },
       { id: 'team_size', number: 9, label: 'Team size', kind: 'select', required: true, options: teamSizes },

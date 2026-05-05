@@ -99,6 +99,7 @@ const styles = StyleSheet.create({
 
 function formatAnswer(qid: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (Array.isArray(value)) {
     return value.map((v) => getOptionLabel(qid, String(v))).join(', ');
   }

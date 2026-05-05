@@ -183,6 +183,7 @@ function Quick({ label, value }: { label: string; value: string | number | null 
 
 function formatValue(qid: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (Array.isArray(value)) {
     return value.map((v) => getOptionLabel(qid, String(v))).join(', ');
   }
