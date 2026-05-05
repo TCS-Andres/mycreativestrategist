@@ -30,6 +30,7 @@ export type Question = {
   maxFiles?: number;
   maxSizeMb?: number;
   category?: 'logo' | 'brand_guide' | 'photography' | 'marketing_materials';
+  autoComplete?: string;
 };
 
 export type Section = {
@@ -96,14 +97,14 @@ export const SECTIONS: Section[] = [
     intro:
       "Let's start with the essentials. The boring-but-necessary stuff so I know who I'm working with.",
     questions: [
-      { id: 'business_name', number: 1, label: 'Business name', kind: 'text', required: true },
-      { id: 'contact_name', number: 2, label: 'Primary contact name', kind: 'text', required: true },
-      { id: 'role_title', number: 3, label: 'Role or title', kind: 'text', required: true },
-      { id: 'contact_email', number: 4, label: 'Email address', kind: 'email', required: true },
-      { id: 'contact_phone', number: 5, label: 'Phone number', kind: 'tel', required: false },
-      { id: 'website_url', number: 6, label: 'Website URL', kind: 'url', required: false, placeholder: 'https://' },
-      { id: 'industry', number: 7, label: 'Industry or category', kind: 'text', required: true },
-      { id: 'year_founded', number: 8, label: 'Year founded', kind: 'number', required: true, min: 1800, max: new Date().getFullYear() },
+      { id: 'business_name', number: 1, label: 'Business name', kind: 'text', required: true, autoComplete: 'organization' },
+      { id: 'contact_name', number: 2, label: 'Primary contact name', kind: 'text', required: true, autoComplete: 'name' },
+      { id: 'role_title', number: 3, label: 'Role or title', kind: 'text', required: true, autoComplete: 'organization-title' },
+      { id: 'contact_email', number: 4, label: 'Email address', kind: 'email', required: true, autoComplete: 'email' },
+      { id: 'contact_phone', number: 5, label: 'Phone number', kind: 'tel', required: false, autoComplete: 'tel' },
+      { id: 'website_url', number: 6, label: 'Website URL', kind: 'url', required: false, placeholder: 'https://', autoComplete: 'url' },
+      { id: 'industry', number: 7, label: 'Industry or category', kind: 'text', required: true, autoComplete: 'off' },
+      { id: 'year_founded', number: 8, label: 'Year founded', kind: 'number', required: true, min: 1800, max: new Date().getFullYear(), autoComplete: 'off' },
       { id: 'team_size', number: 9, label: 'Team size', kind: 'select', required: true, options: teamSizes },
       {
         id: 'where_you_operate',

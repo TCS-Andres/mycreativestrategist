@@ -67,6 +67,9 @@ export function QuestionField({ question, control, errors, files, onFilesChange,
                 onBlur={field.onBlur}
                 invalid={!!error}
                 rows={5}
+                autoComplete="off"
+                name={question.id}
+                id={question.id}
               />
             </Field>
           );
@@ -210,6 +213,9 @@ export function QuestionField({ question, control, errors, files, onFilesChange,
             invalid={!!error}
             min={question.min}
             max={question.max}
+            autoComplete={question.autoComplete}
+            name={question.id}
+            id={question.id}
           />
         </Field>
       )}

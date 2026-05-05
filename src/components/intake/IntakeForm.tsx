@@ -58,11 +58,34 @@ function clearPersisted() {
   window.localStorage.removeItem(STORAGE_KEY);
 }
 
+function buildAllDefaults(responses: Record<string, unknown>) {
+  const d: Record<string, unknown> = {};
+  for (const section of SECTIONS) {
+    for (const q of section.questions) {
+      if (q.kind === 'upload') continue;
+      const v = responses[q.id];
+      if (v !== undefined) {
+        d[q.id] = v;
+      } else if (q.kind === 'multiselect') {
+        d[q.id] = [];
+      } else if (q.kind === 'slider') {
+        d[q.id] = Math.round(((q.min ?? 1) + (q.max ?? 10)) / 2);
+      } else {
+        d[q.id] = '';
+      }
+    }
+  }
+  return d;
+}
+
 export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
   const router = useRouter();
-  const [state, setState] = React.useState<PersistedState>(() => {
+
+  // Compute the starting state ONCE. Everything else lives in RHF or focused useState slots.
+  const initialRef = React.useRef<PersistedState | null>(null);
+  if (initialRef.current === null) {
     const persisted = initial && Object.keys(initial).length ? null : loadPersisted();
-    return {
+    initialRef.current = {
       draftId: initial?.draftId ?? persisted?.draftId ?? newDraftId(),
       resumeToken: initial?.resumeToken ?? persisted?.resumeToken,
       resumeEmail: initial?.resumeEmail ?? persisted?.resumeEmail,
@@ -70,144 +93,148 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
       files: { ...(persisted?.files ?? {}), ...(initial?.files ?? {}) },
       sectionIndex: initial?.sectionIndex ?? persisted?.sectionIndex ?? 0,
     };
-  });
+  }
+  const initialState = initialRef.current;
+
+  const [sectionIndex, setSectionIndex] = React.useState(initialState.sectionIndex);
+  const [files, setFiles] = React.useState<FilesByQuestion>(initialState.files);
+  const [resumeToken, setResumeToken] = React.useState<string | undefined>(initialState.resumeToken);
+  const [resumeEmail, setResumeEmail] = React.useState<string | undefined>(initialState.resumeEmail);
 
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [showSaveDialog, setShowSaveDialog] = React.useState(false);
-  const [saveEmail, setSaveEmail] = React.useState(state.resumeEmail ?? '');
+  const [saveEmail, setSaveEmail] = React.useState(initialState.resumeEmail ?? '');
   const [saveBusinessName, setSaveBusinessName] = React.useState('');
   const [saveStatus, setSaveStatus] = React.useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [saveErrorMsg, setSaveErrorMsg] = React.useState<string | null>(null);
   const [direction, setDirection] = React.useState<1 | -1>(1);
 
-  const currentSection = SECTIONS[state.sectionIndex];
-  const isLast = state.sectionIndex === SECTIONS.length - 1;
+  const currentSection = SECTIONS[sectionIndex];
+  const isLast = sectionIndex === SECTIONS.length - 1;
 
-  const sectionDefaults = React.useMemo(() => {
-    const init: Record<string, unknown> = {};
-    for (const q of currentSection.questions) {
-      if (q.kind === 'upload') continue;
-      const v = state.responses[q.id];
-      if (v !== undefined) {
-        init[q.id] = v;
-      } else if (q.kind === 'multiselect') {
-        init[q.id] = [];
-      } else if (q.kind === 'slider') {
-        init[q.id] = Math.round(((q.min ?? 1) + (q.max ?? 10)) / 2);
-      } else {
-        init[q.id] = '';
-      }
-    }
-    return init;
-  }, [currentSection, state.responses]);
+  // Build defaults across ALL questions exactly once. The form owns these values for the
+  // whole session, so navigating between sections never resets anything.
+  const allDefaults = React.useMemo(
+    () => buildAllDefaults(initialState.responses),
+    [initialState.responses],
+  );
 
   const form = useForm<Record<string, unknown>>({
-    defaultValues: sectionDefaults,
+    defaultValues: allDefaults,
     mode: 'onBlur',
+    shouldUnregister: false,
   });
 
+  // Persist form values + non-form state to localStorage, debounced.
+  // We do NOT call setState of any kind in this subscription, so it does not
+  // re-render the form or fight with autofill.
   React.useEffect(() => {
-    form.reset(sectionDefaults);
-  }, [sectionDefaults, form]);
-
-  // autosave to localStorage every 3 seconds while values change
-  React.useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const subscription = form.watch((values) => {
-      setState((prev) => {
-        const next: PersistedState = {
-          ...prev,
-          responses: { ...prev.responses, ...(values as Record<string, unknown>) },
-        };
-        savePersisted(next);
-        return next;
-      });
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        savePersisted({
+          draftId: initialState.draftId,
+          resumeToken,
+          resumeEmail,
+          responses: values as Record<string, unknown>,
+          files,
+          sectionIndex,
+        });
+      }, 400);
     });
-    return () => subscription.unsubscribe();
-  }, [form]);
+    return () => {
+      if (timer) clearTimeout(timer);
+      subscription.unsubscribe();
+    };
+  }, [form, initialState.draftId, resumeToken, resumeEmail, files, sectionIndex]);
 
-  // periodically push draft to server when we have a resume token
+  // Save on section change / file changes too, so localStorage stays current even if the
+  // watch debounce hasn't fired.
   React.useEffect(() => {
-    if (!state.resumeToken || !state.resumeEmail) return;
+    savePersisted({
+      draftId: initialState.draftId,
+      resumeToken,
+      resumeEmail,
+      responses: form.getValues(),
+      files,
+      sectionIndex,
+    });
+  }, [sectionIndex, files, resumeToken, resumeEmail, initialState.draftId, form]);
+
+  // Periodic server-side autosave, only after the user has provided a resume email.
+  React.useEffect(() => {
+    if (!resumeToken || !resumeEmail) return;
     const id = setInterval(() => {
+      const values = form.getValues();
       void fetch('/api/resume', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: state.resumeToken,
-          email: state.resumeEmail,
-          business_name: state.responses.business_name ?? '',
-          responses: state.responses,
-          files: state.files,
+          token: resumeToken,
+          email: resumeEmail,
+          business_name: (values.business_name as string) ?? '',
+          responses: values,
+          files,
         }),
       }).catch(() => {});
-    }, 12000);
+    }, 15000);
     return () => clearInterval(id);
-  }, [state.resumeToken, state.resumeEmail, state.responses, state.files]);
+  }, [resumeToken, resumeEmail, files, form]);
 
-  function handleFilesChange(questionId: string, files: UploadedFile[]) {
-    setState((prev) => {
-      const next: PersistedState = {
-        ...prev,
-        files: { ...prev.files, [questionId]: files },
-      };
-      savePersisted(next);
-      return next;
-    });
+  function handleFilesChange(questionId: string, list: UploadedFile[]) {
+    setFiles((prev) => ({ ...prev, [questionId]: list }));
   }
 
   async function goNext() {
-    if (currentSection.id !== 'uploads') {
-      const schema = sectionSchemas[currentSection.id];
-      const values = form.getValues();
-      const result = (schema as { safeParse: (v: unknown) => { success: boolean; error?: { issues: Array<{ path: (string | number)[]; message: string }> }; data?: unknown } }).safeParse(values);
-      if (!result.success) {
-        for (const issue of result.error?.issues ?? []) {
-          const path = issue.path[0]?.toString();
-          if (path) form.setError(path, { type: 'manual', message: issue.message });
-        }
-        return;
-      }
-      setState((prev) => {
-        const next: PersistedState = {
-          ...prev,
-          responses: { ...prev.responses, ...(values as Record<string, unknown>) },
-          sectionIndex: Math.min(prev.sectionIndex + 1, SECTIONS.length - 1),
-        };
-        savePersisted(next);
-        return next;
-      });
-    } else {
+    if (currentSection.id === 'uploads') {
       await handleSubmit();
       return;
     }
+    const schema = sectionSchemas[currentSection.id];
+    const values = form.getValues();
+    const result = (
+      schema as {
+        safeParse: (v: unknown) => {
+          success: boolean;
+          error?: { issues: Array<{ path: (string | number)[]; message: string }> };
+        };
+      }
+    ).safeParse(values);
+    if (!result.success) {
+      for (const issue of result.error?.issues ?? []) {
+        const path = issue.path[0]?.toString();
+        if (path) form.setError(path, { type: 'manual', message: issue.message });
+      }
+      return;
+    }
+    // Clear any stale errors on this section's fields before advancing.
+    form.clearErrors(currentSection.questions.map((q) => q.id));
     setDirection(1);
+    setSectionIndex((i) => Math.min(i + 1, SECTIONS.length - 1));
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function goPrev() {
     setDirection(-1);
-    setState((prev) => {
-      const next: PersistedState = {
-        ...prev,
-        sectionIndex: Math.max(prev.sectionIndex - 1, 0),
-      };
-      savePersisted(next);
-      return next;
-    });
+    setSectionIndex((i) => Math.max(i - 1, 0));
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function handleSubmit() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const uploaded = FILE_QUESTIONS.flatMap((q) => state.files[q.id] ?? []);
+      const values = form.getValues();
+      const uploaded = FILE_QUESTIONS.flatMap((q) => files[q.id] ?? []);
       const res = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          responses: state.responses,
+          responses: values,
           uploaded_files: uploaded,
-          resume_token: state.resumeToken,
+          resume_token: resumeToken,
         }),
       });
       if (!res.ok) {
@@ -228,15 +255,16 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
     setSaveErrorMsg(null);
     setSaveStatus('sending');
     try {
+      const values = form.getValues();
       const res = await fetch('/api/resume', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: saveEmail,
-          business_name: saveBusinessName || state.responses.business_name || '',
-          responses: state.responses,
-          files: state.files,
-          existing_token: state.resumeToken,
+          business_name: saveBusinessName || (values.business_name as string) || '',
+          responses: values,
+          files,
+          existing_token: resumeToken,
         }),
       });
       if (!res.ok) {
@@ -244,11 +272,8 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
         throw new Error(j.error ?? 'Could not send the resume link.');
       }
       const data = await res.json();
-      setState((prev) => {
-        const next = { ...prev, resumeToken: data.token as string, resumeEmail: saveEmail };
-        savePersisted(next);
-        return next;
-      });
+      setResumeToken(data.token as string);
+      setResumeEmail(saveEmail);
       setSaveStatus('sent');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong.';
@@ -259,7 +284,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
 
   return (
     <>
-      <ProgressBar currentIndex={state.sectionIndex} />
+      <ProgressBar currentIndex={sectionIndex} />
 
       <div className="container max-w-3xl py-10 sm:py-16">
         <AnimatePresence mode="wait" initial={false} custom={direction}>
@@ -273,7 +298,9 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
             className="space-y-10"
           >
             <header className="space-y-3">
-              <p className="eyebrow">Section {currentSection.index} of {SECTIONS.length}</p>
+              <p className="eyebrow">
+                Section {currentSection.index} of {SECTIONS.length}
+              </p>
               <h2 className="text-3xl font-semibold sm:text-4xl">{currentSection.title}</h2>
               <p className="max-w-2xl text-base leading-relaxed text-brand-navy/80">
                 {currentSection.intro}
@@ -287,9 +314,9 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
                   question={q}
                   control={form.control as never}
                   errors={form.formState.errors}
-                  files={state.files}
+                  files={files}
                   onFilesChange={handleFilesChange}
-                  draftId={state.draftId}
+                  draftId={initialState.draftId}
                 />
               ))}
             </div>
@@ -306,7 +333,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
                   type="button"
                   variant="outline"
                   onClick={goPrev}
-                  disabled={state.sectionIndex === 0 || submitting}
+                  disabled={sectionIndex === 0 || submitting}
                 >
                   Back
                 </Button>
@@ -352,6 +379,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
                   value={saveEmail}
                   onChange={(e) => setSaveEmail(e.target.value)}
                   placeholder="you@business.com"
+                  autoComplete="email"
                 />
               </Field>
               <Field label="Business name" helper="Optional, helps me recognize the saved draft.">
@@ -359,6 +387,7 @@ export function IntakeForm({ initial }: { initial?: Partial<PersistedState> }) {
                   value={saveBusinessName}
                   onChange={(e) => setSaveBusinessName(e.target.value)}
                   placeholder=""
+                  autoComplete="organization"
                 />
               </Field>
               {saveErrorMsg && <p className="text-xs text-destructive">{saveErrorMsg}</p>}
